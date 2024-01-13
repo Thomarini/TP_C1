@@ -1,10 +1,23 @@
 import matplotlib.pyplot as plt
+from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from sklearn.neural_network import MLPRegressor
-from sklearn.metrics import confusion_matrix
 import numpy as np
 
-def tan_hyp_3d(x):
+def plot_error_profile(L_error_app, L_error_test, namefig="error_profile"):
+    plt.plot(range(2, len(L_error_app)+2), L_error_app, '+-r')
+    plt.plot(range(2, len(L_error_test)+2), L_error_test, '+-b')
+    plt.grid()
+    plt.yscale("log")
+    # plt.show()
+    plt.savefig(namefig+'.jpg', dpi=200)
+    plt.close()
+
+def get_MSE(x, y, reg):
+    return np.sum(pow(reg.predict(x) - y, 2)) / x.shape[0]
+
+def tan_hyp(x):
     A = np.array([[5, 0], [0, 7]])
     b = np.array([-0.5, -0.5])
 
@@ -13,116 +26,146 @@ def tan_hyp_3d(x):
     y = (np.tanh(h) + 1) / 2 
     return y
 
-def generate_dataset(size):
-    X = np.random.rand(size, 2)
-    y = np.array([tan_hyp_3d(x) for x in X])
-    return X, y
+def sinc(x):
+    A = np.array([[5, 0], [0, 7]])
+    b = np.array([-0.5, -0.5])
 
-def plot_3d_surface(ax, X, y, title):
-    step_v = 0.05
+    z = A.dot(x + b) 
+    h =  np.sqrt(np.transpose(z).dot(z))
+    y = np.sin(h) / h 
+    return y
 
-    x1min, x1max = X[:, 0].min(), X[:, 0].max()
-    x2min, x2max = X[:, 1].min(), X[:, 1].max()
+def plot_surf(figname, regr=None):
+    step_v = 0.005
 
-    x1v = np.arange(x1min, x1max, step_v)
-    x2v = np.arange(x2min, x2max, step_v)
+    x1v = np.arange(0,1,step_v)
+    x2v = np.arange(0,1,step_v)
     Xv, Yv = np.meshgrid(x1v, x2v)
 
     R = np.zeros(Xv.shape)
     for i, x1 in enumerate(x1v):
         for j, x2 in enumerate(x2v):
-            R[i, j] = tan_hyp_3d(np.array([x1, x2]))
+            if not regr:
+                R[i, j] = tan_hyp(np.array([x1, x2]))
+            else:
+                R[i, j] = regr.predict(np.array([[x1, x2]]))[0]
 
-    surf = ax.plot_surface(Xv, Yv, R, cmap='viridis', alpha=0.5, label='True Surface')
-    ax.scatter(X[:, 0], X[:, 1], y, c='r', marker='o', label='Data Points')
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
 
-    ax.set_xlabel('X1')
-    ax.set_ylabel('X2')
-    ax.set_zlabel('Output')
-    ax.set_title(title)
-    ax.legend()
+    # Plot the surface
+    surf = ax.plot_surface(Xv, Yv, R, cmap=cm.coolwarm, linewidth=0, antialiased=False)
 
-def plot_confusion(X_test, y_test, model, namefig="confusion"):
-    plt.plot(y_test, model.predict(X_test), '.b')
-    plt.plot(y_test, y_test, '-r')
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    plt.savefig(figname, dpi=300)
+    # plt.show()
+    plt.close()
+
+def plot_confusion(x_t, y_t, reg, namefig="confusion"):
+    plt.plot(y_t, reg.predict(x_t), '.b')
+    plt.plot(y_t, y_t, '-r')
     plt.grid()
+    # plt.show()
     plt.savefig(namefig+'.jpg', dpi=200)
     plt.close()
 
-def train_and_evaluate(X_train, y_train, X_test, y_test, hidden_layer_sizes):
-    errors_train = []
-    errors_test = []
-    conf_matrices = []
 
-    for i, hl_size in enumerate(hidden_layer_sizes):
+def plot_surf_dif(figname, regr):
+    step_v = 0.005
 
-        print("currently at {}%".format(i/len(hidden_layer_sizes)*100))
+    x1v = np.arange(0,1,step_v)
+    x2v = np.arange(0,1,step_v)
+    Xv, Yv = np.meshgrid(x1v, x2v)
 
-        # Train the model
-        model = MLPRegressor(hidden_layer_sizes=(hl_size,), max_iter=2000, activation="tanh", learning_rate="adaptive")
-        model.fit(X_train, y_train)
+    R = np.zeros(Xv.shape)
+    for i, x1 in enumerate(x1v):
+        for j, x2 in enumerate(x2v):
+            R[i, j] = (tan_hyp(np.array([x1, x2]))-regr.predict(np.array([[x1, x2]]))[0])
 
-        # Evaluate on training set
-        y_train_pred = model.predict(X_train)
-        mse_train = np.mean((y_train - y_train_pred)**2)
-        errors_train.append(mse_train)
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
 
-        # Evaluate on test set
-        y_test_pred = model.predict(X_test)
-        mse_test = np.mean((y_test - y_test_pred)**2)
-        errors_test.append(mse_test)
+    # Plot the surface
+    surf = ax.plot_surface(Xv, Yv, R, cmap=cm.coolwarm, linewidth=0, antialiased=False)
 
-        # Confusion matrix
-        """ conf_matrix = confusion_matrix((y_test > 0.5).astype(int), (y_test_pred > 0.5).astype(int))
-        conf_matrices.append(conf_matrix) """
-        plot_confusion(X_test, y_test, model, namefig="confusion_{}".format(hl_size))
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 
-        # Plot 3D surface
-        fig = plt.figure(figsize=(12, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        plot_3d_surface(ax, X_test, y_test_pred, f'Hidden Layers: {hl_size}')
-        plt.savefig("{}.jpg".format(hl_size), dpi=200)
-        plt.close()
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    plt.savefig(figname, dpi=300)
+    # plt.show()
+    plt.close()
 
-    
-    return errors_train, errors_test, conf_matrices
+def plot_confusion(x_t, y_t, reg, namefig="confusion"):
+    plt.plot(y_t, reg.predict(x_t), '.b')
+    plt.plot(y_t, y_t, '-r')
+    plt.grid()
+    # plt.show()
+    plt.savefig(namefig+'.jpg', dpi=200)
+    plt.close()
 
 def main():
-    # Generate datasets
-    np.random.seed(42)
-    X_train, y_train = generate_dataset(200)
-    X_test, y_test = generate_dataset(1600)
 
-    # Define hidden layer sizes to be tested
-    hidden_layer_sizes = np.arange(2, 115, 1)
+    FUNC = tan_hyp
 
-    # Train and evaluate
-    errors_train, errors_test, conf_matrices = train_and_evaluate(X_train, y_train, X_test, y_test, hidden_layer_sizes)
+    # Get learning set
+    with open("sinc_dim2_input.csv", 'r') as f:
+        f.readline() # Skip the header
+        X_app = np.loadtxt(f, delimiter=';')
 
-    # Plot errors
-    plt.figure()
-    plt.plot(hidden_layer_sizes, errors_train, label='Training Error')
-    plt.plot(hidden_layer_sizes, errors_test, label='Test Error')
-    plt.xlabel('Hidden Layer Size')
-    plt.ylabel('Mean Squared Error')
-    plt.title('Training and Test Errors for Different Hidden Layer Sizes')
-    plt.legend()
-    plt.savefig("{}.jpg", dpi=200)
+    y_app = np.zeros(X_app.shape[0])
+    for i, x in enumerate(X_app):
+        y_app[i] = FUNC(x)
 
-    best = np.argmin(errors_test) + 2
-    model = MLPRegressor(hidden_layer_sizes=(best,), max_iter=2000, activation="tanh", learning_rate="adaptive")
-    model.fit(X_train, y_train)
+    # Generate test set
+    POINTS_PER_DIM = 40
+    mesh_line = np.linspace(0, 1, POINTS_PER_DIM)
+    test_set_size = POINTS_PER_DIM ** 2
+    X_test = np.zeros((test_set_size, 2))
+    y_test = np.zeros(test_set_size)
 
-    # Evaluate on test set
-    y_test_pred = model.predict(X_test)
+    i, j = 0, 0     # Correspondance entre mesline et 2D array
+    for idx in range(test_set_size):
+        x = np.array([mesh_line[i], mesh_line[j]])
+        X_test[idx] = x
+        y_test[idx] = FUNC(x)
 
-    # Plot 3D surface
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    plot_3d_surface(ax, X_test, y_test_pred, f'Hidden Layers: {best}')
-    plt.show()
+        j = j+1
+        if (j == POINTS_PER_DIM):
+            j = 0
+            i += 1
     
+    # Training
+    hl_size_max = 25
+    OFFSET = 2
+    L_error_app = np.zeros((hl_size_max-OFFSET, 1))
+    L_error_test = np.zeros((hl_size_max-OFFSET, 1))
     
-if __name__ == "__main__":
-    main()
+    for i, hl_size in enumerate(range(OFFSET, hl_size_max)):
+        print("nb hidden layer : {}".format(hl_size))       
 
+        regr = MLPRegressor(hidden_layer_sizes=hl_size, max_iter=2000, activation="tanh",solver='lbfgs', tol=0.0001)
+        regr = regr.fit(X_app, y_app)
+        L_error_app[i] = get_MSE(X_app, y_app, regr)
+        L_error_test[i] = get_MSE(X_test, y_test, regr)
+        if hl_size in [5, 10, 15]:
+            plot_surf("Apprentissage_{}".format(hl_size), regr)
+            plot_surf_dif("dif_surface_{}".format(hl_size), regr)
+            plot_confusion(X_test, y_test, regr, "Confusion_MLP_{}".format(hl_size))
+
+    best = np.argmin(L_error_test)+OFFSET
+    print("Meilleur modele -> Neurones =", best)
+    
+    regr = MLPRegressor(hidden_layer_sizes=best, max_iter=2000, activation="tanh",solver='lbfgs', tol=0.0001).fit(X_app, y_app)
+
+    # Plots
+    plot_surf("Apprentissage", regr)
+    plot_surf("Tangente hyperbolique")
+    plot_confusion(X_test, y_test, regr, "Confusion_MLP")
+    plot_surf_dif("dif_surface", regr)
+    plot_error_profile(L_error_app, L_error_test, "Profil_Err_App_Test_MLP")
+
+main()
